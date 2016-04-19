@@ -256,8 +256,11 @@ GuidanceMultiCamNode::GuidanceMultiCamNode() : CAM_COUNT(5), depth_image_pubs_(C
   cam_vbus_indices_[3] = e_vbus4;
   cam_vbus_indices_[4] = e_vbus5;
 
-  bool lr_auto_exposure;
+  bool lr_auto_exposure, pub_left, pub_right, pub_depth;
   ros::param::param<bool>("~lr_auto_exposure", lr_auto_exposure, true);
+  ros::param::param<bool>("~pub_left", pub_left, true);
+  ros::param::param<bool>("~pub_right", pub_right, false);
+  ros::param::param<bool>("~pub_depth", pub_depth, false);
 
   imu_pub_      = nh_.advertise<geometry_msgs::TransformStamped>("/guidance/imu", 1);
   velocity_pub_ = nh_.advertise<geometry_msgs::Vector3Stamped>("/guidance/velocity", 1);
@@ -272,19 +275,29 @@ GuidanceMultiCamNode::GuidanceMultiCamNode() : CAM_COUNT(5), depth_image_pubs_(C
   // selecting camera streams
   for (uint32_t i = 0; i < CAM_COUNT; i++)
   {
-    depth_image_pubs_[i] = nh_.advertise<sensor_msgs::Image>("/guidance/cam" +
-        std::to_string(i) + "/depth_image", 1);
-    left_image_pubs_[i]  = nh_.advertise<sensor_msgs::Image>("/guidance/cam" +
-        std::to_string(i) + "/left_image", 1);
-    right_image_pubs_[i] = nh_.advertise<sensor_msgs::Image>("/guidance/cam" +
-        std::to_string(i) + "/right_image", 1);
+    if (pub_left)
+    {
+      left_image_pubs_[i]  = nh_.advertise<sensor_msgs::Image>("/guidance/cam" +
+          std::to_string(i) + "/left_image", 1);
+      err_code = select_greyscale_image(cam_vbus_indices_[i], true);
+      RETURN_IF_ERR(err_code);
+    }
 
-    err_code = select_greyscale_image(cam_vbus_indices_[i], true);
-    RETURN_IF_ERR(err_code);
-    err_code = select_greyscale_image(cam_vbus_indices_[i], false);
-    RETURN_IF_ERR(err_code);
-    err_code = select_depth_image(cam_vbus_indices_[i]);
-    RETURN_IF_ERR(err_code);
+    if (pub_left)
+    {
+      right_image_pubs_[i] = nh_.advertise<sensor_msgs::Image>("/guidance/cam" +
+          std::to_string(i) + "/right_image", 1);
+      err_code = select_greyscale_image(cam_vbus_indices_[i], false);
+      RETURN_IF_ERR(err_code);
+    }
+
+    if (pub_left)
+    {
+      depth_image_pubs_[i] = nh_.advertise<sensor_msgs::Image>("/guidance/cam" +
+          std::to_string(i) + "/depth_image", 1);
+      err_code = select_depth_image(cam_vbus_indices_[i]);
+      RETURN_IF_ERR(err_code);
+    }
   }
 
   // selecting guidance info stream
