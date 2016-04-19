@@ -283,7 +283,7 @@ GuidanceMultiCamNode::GuidanceMultiCamNode() : CAM_COUNT(5), depth_image_pubs_(C
       RETURN_IF_ERR(err_code);
     }
 
-    if (pub_left)
+    if (pub_right)
     {
       right_image_pubs_[i] = nh_.advertise<sensor_msgs::Image>("/guidance/cam" +
           std::to_string(i) + "/right_image", 1);
@@ -291,7 +291,7 @@ GuidanceMultiCamNode::GuidanceMultiCamNode() : CAM_COUNT(5), depth_image_pubs_(C
       RETURN_IF_ERR(err_code);
     }
 
-    if (pub_left)
+    if (pub_depth)
     {
       depth_image_pubs_[i] = nh_.advertise<sensor_msgs::Image>("/guidance/cam" +
           std::to_string(i) + "/depth_image", 1);
@@ -353,4 +353,5 @@ int main (int argc, char** argv)
 
   instance = new GuidanceMultiCamNode();
   ros::spin();
+  delete instance;
 }
