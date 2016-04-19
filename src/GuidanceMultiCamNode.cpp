@@ -21,7 +21,7 @@
 #include <geometry_msgs/TransformStamped.h> //IMU
 #include <geometry_msgs/Vector3Stamped.h> //velocity
 #include <sensor_msgs/LaserScan.h> //obstacle distance & ultrasonic
-#include <algorithm>
+#include <signal.h>
 
 
 #define RETURN_IF_ERR(err_code) { if( err_code ){ release_transfer(); \
@@ -345,11 +345,20 @@ GuidanceMultiCamNode::GuidanceMultiCamNode() : CAM_COUNT(5), depth_image_pubs_(C
   instance = this;
 }
 
+void mySigintHandler(int sig)
+{
+  // Do some custom action.
+  // For example, publish a stop message to some other nodes.
+  // All the default sigint handler does is call shutdown()
+  delete instance;
+  ros::shutdown();
+}
 
 
 int main (int argc, char** argv)
 {
-  ros::init(argc, argv, "guidance");
+  ros::init(argc, argv, "guidance", ros::init_options::NoSigintHandler);
+  signal(SIGINT, mySigintHandler);
 
   instance = new GuidanceMultiCamNode();
   ros::spin();
