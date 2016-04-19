@@ -264,7 +264,7 @@ GuidanceMultiCamNode::GuidanceMultiCamNode() : CAM_COUNT(5), depth_image_pubs_(C
 
   imu_pub_      = nh_.advertise<geometry_msgs::TransformStamped>("/guidance/imu", 1);
   velocity_pub_ = nh_.advertise<geometry_msgs::Vector3Stamped>("/guidance/velocity", 1);
-  position_pub_ = nh_.advertise<sensor_msgs::LaserScan>("/guidance/position", 1);
+  position_pub_ = nh_.advertise<geometry_msgs::Vector3Stamped>("/guidance/position", 1);
   ultrasonic_pub_ = nh_.advertise<sensor_msgs::LaserScan>("/guidance/ultrasonic", 1);
   obstacle_distance_pub_ = nh_.advertise<sensor_msgs::LaserScan>("/guidance/obstacle_distance", 1);
 
@@ -352,5 +352,5 @@ int main (int argc, char** argv)
   ros::init(argc, argv, "guidance");
 
   instance = new GuidanceMultiCamNode();
-  ros::spinOnce();
+  ros::spin();
 }
