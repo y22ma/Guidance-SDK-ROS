@@ -11,6 +11,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/image_encodings.h>
+#include <sensor_msgs/Imu.h>
 
 #include <opencv/cv.h>
 #include <opencv/highgui.h>
@@ -18,6 +19,7 @@
 #include "DJI_guidance.h"
 #include "DJI_utility.h"
 
+#include <geometry_msgs/PoseStamped.h> //IMU
 #include <geometry_msgs/TransformStamped.h> //IMU
 #include <geometry_msgs/Vector3Stamped.h> //velocity
 #include <sensor_msgs/LaserScan.h> //obstacle distance & ultrasonic
@@ -47,11 +49,14 @@ private:
   ros::Publisher velocity_pub_;
   ros::Publisher ultrasonic_pub_;
   ros::Publisher position_pub_;
+  ros::Publisher pose_pub_;
   e_vbus_index cam_vbus_indices_[5];
 
   DJI_lock dji_lock_;
   DJI_event dji_event_;
 
+  bool visualize_;
+  bool imu_received_;
   int32_t width_;
   int32_t height_;
   int32_t image_len_;
@@ -59,6 +64,8 @@ private:
   cv::Mat g_greyscale_image_right;
   cv::Mat g_depth;
   cv::Mat depth8;
+
+  sensor_msgs::Imu curr_imu_;
 };
 
 GuidanceMultiCamNode* instance;
@@ -83,7 +90,10 @@ int GuidanceMultiCamNode::guidanceCb(int data_type, int data_len, char *content)
       if (data->m_greyscale_image_left[cam_vbus_indices_[i]])
       {
         memcpy(g_greyscale_image_left.data, data->m_greyscale_image_left[cam_vbus_indices_[i]], image_len_);
-        cv::imshow("left" + std::to_string(i),  g_greyscale_image_left);
+        if (visualize_)
+        {
+          cv::imshow("left" + std::to_string(i),  g_greyscale_image_left);
+        }
 
         // publish left greyscale image
         cv_bridge::CvImage left_8;
@@ -96,7 +106,10 @@ int GuidanceMultiCamNode::guidanceCb(int data_type, int data_len, char *content)
       if (data->m_greyscale_image_right[cam_vbus_indices_[i]])
       {
         memcpy(g_greyscale_image_right.data, data->m_greyscale_image_right[cam_vbus_indices_[i]], image_len_);
-	cv::imshow("right" + std::to_string(i), g_greyscale_image_right);
+        if (visualize_)
+        {
+	  cv::imshow("right" + std::to_string(i), g_greyscale_image_right);
+        }
 
         // publish right greyscale image
         cv_bridge::CvImage right_8;
@@ -110,7 +123,10 @@ int GuidanceMultiCamNode::guidanceCb(int data_type, int data_len, char *content)
       {
         memcpy(g_depth.data, data->m_depth_image[cam_vbus_indices_[i]], image_len_ * 2);
         g_depth.convertTo(depth8, CV_8UC1);
-	cv::imshow("depth" + std::to_string(i), depth8);
+        if (visualize_)
+        {
+	  cv::imshow("depth" + std::to_string(i), depth8);
+        }
 
         // publish depth image
         cv_bridge::CvImage depth_16;
@@ -121,7 +137,10 @@ int GuidanceMultiCamNode::guidanceCb(int data_type, int data_len, char *content)
         depth_image_pubs_[i].publish(depth_16.toImageMsg());
       }
 
-      cv::waitKey(1);
+      if (visualize_)
+      {
+        cv::waitKey(1);
+      }
     }
   }
 
@@ -134,17 +153,17 @@ int GuidanceMultiCamNode::guidanceCb(int data_type, int data_len, char *content)
         imu_data->acc_z, imu_data->q[0], imu_data->q[1], imu_data->q[2], imu_data->q[3]);
 
     //_.publish imu data
-    geometry_msgs::TransformStamped g_imu;
-    g_imu.header.frame_id = "guidance";
-    g_imu.header.stamp    = ros::Time::now();
-    g_imu.transform.translation.x = imu_data->acc_x;
-    g_imu.transform.translation.y = imu_data->acc_y;
-    g_imu.transform.translation.z = imu_data->acc_z;
-    g_imu.transform.rotation.w = imu_data->q[0];
-    g_imu.transform.rotation.x = imu_data->q[1];
-    g_imu.transform.rotation.y = imu_data->q[2];
-    g_imu.transform.rotation.z = imu_data->q[3];
-    imu_pub_.publish(g_imu);
+    imu_received_ = true;
+    curr_imu_.header.frame_id = "guidance";
+    curr_imu_.header.stamp    = ros::Time::now();
+    curr_imu_.linear_acceleration.x = imu_data->acc_x;
+    curr_imu_.linear_acceleration.y = imu_data->acc_y;
+    curr_imu_.linear_acceleration.z = imu_data->acc_z;
+    curr_imu_.orientation.w = imu_data->q[0];
+    curr_imu_.orientation.x = imu_data->q[1];
+    curr_imu_.orientation.y = imu_data->q[2];
+    curr_imu_.orientation.z = imu_data->q[3];
+    imu_pub_.publish(curr_imu_);
   }
   /* velocity */
   if (e_velocity == data_type && NULL != content)
@@ -224,6 +243,21 @@ int GuidanceMultiCamNode::guidanceCb(int data_type, int data_len, char *content)
     g_pos.vector.y = m->position_in_global_y;
     g_pos.vector.z = m->position_in_global_z;
     position_pub_.publish(g_pos);
+
+    if (imu_received_)
+    {
+      geometry_msgs::PoseStamped pose;
+      pose.header.frame_id = "guidance";
+      pose.header.stamp = ros::Time::now();
+      pose.pose.position.x = g_pos.vector.x;
+      pose.pose.position.y = g_pos.vector.y;
+      pose.pose.position.z = g_pos.vector.z;
+      pose.pose.orientation.w = curr_imu_.orientation.w;
+      pose.pose.orientation.x = curr_imu_.orientation.x;
+      pose.pose.orientation.y = curr_imu_.orientation.y;
+      pose.pose.orientation.z = curr_imu_.orientation.z;
+      pose_pub_.publish(pose);
+    }
   }
 
   dji_lock_.leave();
@@ -248,7 +282,7 @@ GuidanceMultiCamNode::~GuidanceMultiCamNode()
 
 
 GuidanceMultiCamNode::GuidanceMultiCamNode() : CAM_COUNT(5), depth_image_pubs_(CAM_COUNT),
-    left_image_pubs_(CAM_COUNT), right_image_pubs_(CAM_COUNT)
+    left_image_pubs_(CAM_COUNT), right_image_pubs_(CAM_COUNT), imu_received_(false)
 {
   cam_vbus_indices_[0] = e_vbus1;
   cam_vbus_indices_[1] = e_vbus2;
@@ -258,13 +292,15 @@ GuidanceMultiCamNode::GuidanceMultiCamNode() : CAM_COUNT(5), depth_image_pubs_(C
 
   bool lr_auto_exposure, pub_left, pub_right, pub_depth;
   ros::param::param<bool>("~lr_auto_exposure", lr_auto_exposure, true);
+  ros::param::param<bool>("~visualize", visualize_, false);
   ros::param::param<bool>("~pub_left", pub_left, true);
   ros::param::param<bool>("~pub_right", pub_right, false);
   ros::param::param<bool>("~pub_depth", pub_depth, false);
 
-  imu_pub_      = nh_.advertise<geometry_msgs::TransformStamped>("/guidance/imu", 1);
+  imu_pub_      = nh_.advertise<sensor_msgs::Imu>("/guidance/imu", 1);
   velocity_pub_ = nh_.advertise<geometry_msgs::Vector3Stamped>("/guidance/velocity", 1);
   position_pub_ = nh_.advertise<geometry_msgs::Vector3Stamped>("/guidance/position", 1);
+  pose_pub_     = nh_.advertise<geometry_msgs::PoseStamped>("/guidance/pose", 1);
   ultrasonic_pub_ = nh_.advertise<sensor_msgs::LaserScan>("/guidance/ultrasonic", 1);
   obstacle_distance_pub_ = nh_.advertise<sensor_msgs::LaserScan>("/guidance/obstacle_distance", 1);
 
